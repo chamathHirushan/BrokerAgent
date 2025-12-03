@@ -2,3 +2,4 @@
 .env
 downloads
 analysis_results
+**/__pycache__/

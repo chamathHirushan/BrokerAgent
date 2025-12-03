@@ -5,3 +5,10 @@ pandas
 google-generativeai
 pydantic
 python-dotenv
+mcp
+langchain
+langchain-google-genai
+langchain-mcp-adapters
+fastapi
+uvicorn
+tabulate

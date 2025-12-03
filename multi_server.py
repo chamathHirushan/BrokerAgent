@@ -1,0 +1,72 @@
+import os
+import asyncio
+import sys
+from pathlib import Path
+
+# Force UTF-8 encoding for stdout/stderr on Windows
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# LLM
+model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", api_key=os.getenv("GEMINI_API_KEY"))
+
+# MCP servers
+# We point to our broker_server.py
+client = MultiServerMCPClient(
+    {
+        "broker": {
+            "command": "python",
+            "args": ["mcp_server/broker_server.py"],
+            "transport": "stdio",
+        },
+    }
+)
+
+# REQUIRED Tool Calling prompt
+prompt = ChatPromptTemplate.from_messages([
+    ("system", """You are an expert Investment Advisor and Financial Analyst for the Colombo Stock Exchange (CSE).
+    
+    Your goal is to provide deep, data-driven investment insights and financial analysis based on the reports and market data you have access to.
+    
+    When a user asks about a company or market trends:
+    1. ALWAYS use your tools to fetch real data (Trade Summaries, Financial Reports, Analysis JSONs).
+    2. Analyze the data thoroughly (Revenue growth, Profit margins, PE ratios, Volume trends).
+    3. Provide a professional investment opinion or detailed financial breakdown.
+    4. Do NOT be afraid to give a recommendation (e.g., "Strong Buy", "Hold", "Watch") if the data supports it, but always qualify it by saying "Based on the current data...".
+    5. Do NOT simply say "I cannot provide investment advice". Instead, say "Here is an analysis to help you make an informed decision..." and then provide the analysis.
+    
+    Be professional, analytical, and helpful."""),
+    ("placeholder", "{chat_history}"),
+    ("human", "{input}"),
+    ("placeholder", "{agent_scratchpad}"),
+])
+
+async def get_agent_executor():
+    # Initialize connection to MCP servers and get tools
+    tools = await client.get_tools()
+    
+    # Create the agent
+    agent = create_tool_calling_agent(model, tools, prompt)
+    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+    return agent_executor
+
+async def run_multi_server_agent():
+    agent_executor = await get_agent_executor()
+
+    # Test query
+    query = "Scrape and analyze CSE reports for the year 2025"
+    print(f"\n[Query]: {query}")
+    result = await agent_executor.ainvoke({"input": query})
+    print(result["output"])
+
+if __name__ == "__main__":
+    asyncio.run(run_multi_server_agent())

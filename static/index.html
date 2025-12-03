@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSE Broker Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#2563eb',
+                        'primary-hover': '#1d4ed8',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer components {
+            .message {
+                @apply max-w-[80%] px-4 py-3 rounded-xl text-[0.95rem] leading-relaxed relative animate-[fadeIn_0.3s_ease];
+            }
+            .message.user {
+                @apply self-end bg-primary text-white rounded-br-sm;
+            }
+            .message.agent {
+                @apply self-start bg-gray-100 text-gray-800 rounded-bl-sm;
+            }
+            .typing-indicator {
+                @apply hidden self-start bg-gray-100 px-4 py-3 rounded-xl rounded-bl-sm gap-1 w-fit;
+            }
+            .typing-dot {
+                @apply w-1.5 h-1.5 bg-gray-400 rounded-full animate-[bounce_1.4s_infinite_ease-in-out_both];
+            }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Custom Scrollbar */
+        #chat-box::-webkit-scrollbar { width: 6px; }
+        #chat-box::-webkit-scrollbar-track { background: transparent; }
+        #chat-box::-webkit-scrollbar-thumb { @apply bg-gray-300 rounded-full; }
+    </style>
+</head>
+<body class="bg-gray-100 h-screen flex justify-center items-center text-gray-800 font-sans">
+    <div class="w-full max-w-[900px] h-[90vh] bg-white rounded-2xl shadow-lg flex flex-col overflow-hidden">
+        <!-- Header -->
+        <div class="p-5 border-b border-gray-200 bg-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                <h1 class="text-xl font-semibold text-gray-800">CSE Broker Agent</h1>
+            </div>
+            <button id="reset-btn" class="text-sm text-gray-500 hover:text-red-500 transition-colors">
+                Reset Chat
+            </button>
+        </div>
+        
+        <!-- Chat Area -->
+        <div id="chat-box" class="flex-1 overflow-y-auto p-6 flex flex-col gap-4 scroll-smooth">
+            <div class="message agent">Hello! I'm your CSE Broker Agent. I can help you scrape and analyze Colombo Stock Exchange reports. What would you like to know?</div>
+            <div class="typing-indicator" id="typing-indicator">
+                <span class="typing-dot" style="animation-delay: -0.32s"></span>
+                <span class="typing-dot" style="animation-delay: -0.16s"></span>
+                <span class="typing-dot"></span>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="p-5 bg-white border-t border-gray-200 flex gap-3">
+            <input type="text" id="message-input" 
+                class="flex-1 px-4 py-3 border border-gray-200 rounded-lg text-base outline-none focus:border-primary transition-colors"
+                placeholder="Type your message..." autocomplete="off">
+            <button id="send-btn" 
+                class="px-6 py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary-hover disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors">
+                Send
+            </button>
+        </div>
+    </div>
+
+    <script src="static/script.js"></script>
+</body>
+</html>
