@@ -1,7 +1,5 @@
 import os
-import random
 from typing import List
-# from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_pinecone import PineconeVectorStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -12,10 +10,9 @@ import time
 class PineconeManager:
     def __init__(self):
         self.api_key = os.getenv("PINECONE_API_KEY")
-        self.index_name = os.getenv("PINECONE_INDEX_NAME", "quickstart")
+        self.index_name = os.getenv("PINECONE_INDEX_NAME", "agentbroker")
         
         # --- LOCAL HUGGING FACE EMBEDDINGS ---
-        # Uses your CPU/GPU. Free. No Rate Limits. 768 Dimensions.
         print("🧠 Loading Local Embedding Model (all-mpnet-base-v2)...")
         self.embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
         
@@ -57,9 +54,7 @@ class PineconeManager:
         )
         splits = text_splitter.split_documents(documents)
         
-        # Batch processing to avoid hitting Gemini rate limits
-        # Gemini Free Tier is sensitive, so we use small batches and delays
-        batch_size = 1  # Reduced to 1 (Ultra-Conservative)
+        batch_size = 1
         total_splits = len(splits)
         
         print(f"Processing {total_splits} chunks...")
@@ -67,7 +62,7 @@ class PineconeManager:
         for i in range(0, total_splits, batch_size):
             batch = splits[i:i + batch_size]
             retries = 0
-            max_retries = 5 # Increased retries
+            max_retries = 3
             
             while retries < max_retries:
                 try:
@@ -77,7 +72,7 @@ class PineconeManager:
                 except Exception as e:
                     if "429" in str(e):
                         retries += 1
-                        wait_time = 30
+                        wait_time = 10
                         print(f"⚠️ Rate limit hit (429). Retry {retries}/{max_retries} in {wait_time}s...")
                         time.sleep(wait_time)
                     else:
@@ -93,9 +88,6 @@ class PineconeManager:
         """Search for similar documents."""
         return self.vector_store.similarity_search(query, k=k)
 
-    def as_retriever(self):
-        return self.vector_store.as_retriever()
-
     def clear_index(self):
         """Clears all vectors from the index."""
         try:
@@ -109,7 +101,6 @@ class PineconeManager:
         """Deletes all vectors associated with a specific file."""
         try:
             index = self.pc.Index(self.index_name)
-            # Delete vectors where metadata 'source' matches the filename
             index.delete(filter={"source": filename})
             print(f"✅ Deleted vectors for file: {filename}")
         except Exception as e:

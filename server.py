@@ -12,7 +12,6 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
 from rag_store import PineconeManager
 
-# Add parent directory to sys.path
 sys.path.append(str(Path(__file__).parent))
 
 from multi_server import get_agent_executor
@@ -22,9 +21,7 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
 
-# Initialize Pinecone Manager for uploads
 rag_manager = None
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup

@@ -18,13 +18,12 @@ from rag_store import PineconeManager
 
 load_dotenv()
 
-# Initialize Pinecone Manager
 rag_manager = PineconeManager()
 
 @tool
 def search_knowledge_base(query: str) -> str:
     """
-    Searches the internal knowledge base (Pinecone) for relevant information from uploaded documents.
+    Searches the internal knowledge base for relevant information from uploaded documents.
     Use this tool when the user asks about content from files they have uploaded.
     """
     try:
@@ -75,10 +74,7 @@ prompt = ChatPromptTemplate.from_messages([
 ])
 
 async def get_agent_executor():
-    # Initialize connection to MCP servers and get tools
     mcp_tools = await client.get_tools()
-    
-    # Combine MCP tools with local RAG tool
     all_tools = mcp_tools + [search_knowledge_base]
     
     # Create the agent
