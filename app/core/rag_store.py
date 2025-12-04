@@ -10,7 +10,9 @@ import time
 class PineconeManager:
     def __init__(self):
         self.api_key = os.getenv("PINECONE_API_KEY")
-        self.index_name = os.getenv("PINECONE_INDEX_NAME", "agentbroker")
+        self.index_name = os.getenv("PINECONE_INDEX_NAME")
+        if not self.index_name:
+            self.index_name = "agentbroker"
         
         # --- LOCAL HUGGING FACE EMBEDDINGS ---
         print("🧠 Loading Local Embedding Model (all-mpnet-base-v2)...")

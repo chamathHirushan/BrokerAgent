@@ -8,6 +8,8 @@ import google.generativeai as genai
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
+from app.core.db_manager import db_manager
+
 # Load environment variables
 load_dotenv()
 
@@ -204,12 +206,45 @@ async def analyze_pdf(pdf_path: Path, output_dir: Path):
             print(f"⚠️ Could not generate dynamic filename: {e}")
             filename = f"{pdf_path.stem}_analysis.json"
 
-        # Save to JSON
-        output_file = output_dir / filename
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(analysis_data, f, indent=2)
+        # # Save to JSON
+        # output_file = output_dir / filename
+        # with open(output_file, "w", encoding="utf-8") as f:
+        #     json.dump(analysis_data, f, indent=2)
             
-        print(f"✅ Analysis saved to {output_file}")
+        # print(f"✅ Analysis saved to {output_file}")
+
+        try:
+            symbol = "UNKNOWN"
+            year = "UNKNOWN"
+            
+            # Try to get from content first
+            if "company_info" in analysis_data:
+                if "ticker_symbol" in analysis_data["company_info"]:
+                    symbol = analysis_data["company_info"]["ticker_symbol"]
+                if "report_end_date" in analysis_data["company_info"]:
+                    year = analysis_data["company_info"]["report_end_date"][:4] # Extract YYYY
+            
+            # Fallback to filename parsing if content is missing/empty
+            if symbol == "UNKNOWN" or not symbol:
+                parts = filename.split('_')
+                if len(parts) > 0:
+                    symbol = parts[0].split('.')[0] # Remove .N0000
+            
+            if year == "UNKNOWN":
+                # Try to find a year in the filename
+                match = re.search(r'20\d{2}', filename)
+                if match:
+                    year = match.group(0)
+
+            db_manager.save_report(
+                symbol=symbol,
+                year=year,
+                file_name=filename,
+                content=analysis_data
+            )
+            
+        except Exception as e:
+            print(f"⚠️ Failed to save to database: {e}")
 
     except Exception as e:
         print(f"❌ Error during analysis: {e}")

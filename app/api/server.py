@@ -10,11 +10,9 @@ from pypdf import PdfReader
 from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
-from rag_store import PineconeManager
+from app.core.rag_store import PineconeManager
 
-sys.path.append(str(Path(__file__).parent))
-
-from multi_server import get_agent_executor, get_rag_manager
+from app.api.multi_server import get_agent_executor, get_rag_manager
 
 # Force UTF-8 encoding for stdout/stderr on Windows
 if sys.platform == "win32":

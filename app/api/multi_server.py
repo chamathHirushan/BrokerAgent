@@ -14,7 +14,7 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
 from dotenv import load_dotenv
-from rag_store import PineconeManager
+from app.core.rag_store import PineconeManager
 
 load_dotenv()
 
@@ -50,13 +50,19 @@ def search_knowledge_base(query: str) -> str:
 model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", api_key=os.getenv("GEMINI_API_KEY"))
 
 # MCP servers
-# We point to our broker_server.py
+# We point to our mcp_server.py
+# Ensure we use the same python executable and set PYTHONPATH so imports work
+project_root = str(Path(__file__).resolve().parent.parent.parent)
+env = os.environ.copy()
+env["PYTHONPATH"] = project_root + os.pathsep + env.get("PYTHONPATH", "")
+
 client = MultiServerMCPClient(
     {
         "broker": {
-            "command": "python",
-            "args": ["mcp_server/broker_server.py"],
+            "command": sys.executable,
+            "args": ["app/api/mcp_server.py"],
             "transport": "stdio",
+            "env": env,
         },
     }
 )

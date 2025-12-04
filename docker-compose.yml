@@ -1,0 +1,23 @@
+services:
+  broker-agent:
+    build: .
+    container_name: broker-agent
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist downloaded files and analysis results
+      - ./downloads:/app/downloads
+      - ./analysis_results:/app/analysis_results
+      # Persist the SQLite database
+      - ./data:/app/data
+      # Mount source code for development (optional, remove for production)
+      # - .:/app
+    
+    # Load environment variables from .env file
+    env_file:
+      - .env
+
+    environment:
+      # Database path inside the container
+      - DB_PATH=/app/data/broker_agent.db
+    restart: unless-stopped

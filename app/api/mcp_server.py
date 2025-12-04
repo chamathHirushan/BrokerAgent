@@ -3,24 +3,81 @@ import os
 import sys
 import re
 from pathlib import Path
-from typing import List, Set
+from typing import List, Set, Optional
 import pandas as pd
 
 # Force UTF-8 encoding for stdout/stderr on Windows to handle emojis
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
-
-# Add parent directory to sys.path to allow importing scraper and analyzer
-sys.path.append(str(Path(__file__).parent.parent))
+    
+from app.core.db_manager import db_manager
+import json
 
 from mcp.server.fastmcp import FastMCP
-from scraper import CSEScraper
-from analyzer import analyze_pdf
+from app.services.scraper import CSEScraper
+from app.services.analyzer import analyze_pdf
 
 # Initialize FastMCP server
 mcp = FastMCP("BrokerAgent")
 output_dir: str = "downloads"
+
+async def _get_trade_summary_df() -> Optional[pd.DataFrame]:
+    """Helper to scrape and load the trade summary CSV."""
+    scraper = CSEScraper(target_years=set(), output_dir=output_dir, headless=True)
+    try:
+        csv_path = await scraper.scrape_trade_summary()
+        if not csv_path or not csv_path.exists():
+            return None
+        df = pd.read_csv(csv_path)
+        df.columns = df.columns.str.strip()
+        return df
+    except Exception as e:
+        print(f"⚠️ Error getting trade summary: {e}")
+        return None
+    finally:
+        await scraper.close()
+
+@mcp.tool()
+async def resolve_symbol(symbol: str) -> str:
+    """
+    Resolves a symbol to its full format (e.g., 'JKH' -> 'JKH.N0000') using the trade summary.
+    """
+    symbol = symbol.strip().upper()
+    print(f"🔎 Resolving symbol: {symbol}...")
+    
+    df = await _get_trade_summary_df()
+    if df is None:
+        print("⚠️ Could not load CSV for symbol resolution.")
+        return symbol
+        
+    symbol_cols = df.columns[df.columns.str.contains("symbol", case=False)]
+    if symbol_cols.empty:
+        return symbol
+    sym_col = symbol_cols[0]
+    
+    # 1. Check for exact match
+    if symbol in df[sym_col].values:
+        return symbol
+        
+    # 2. Check for "starts with" match (e.g. JKH -> JKH.N0000)
+    mask = df[sym_col].astype(str).str.startswith(symbol + ".")
+    matches = df[mask]
+    if not matches.empty:
+        found = matches.iloc[0][sym_col]
+        print(f"✅ Resolved {symbol} -> {found}")
+        return found
+        
+    # 3. Check for general containment (fuzzy)
+    mask = df[sym_col].astype(str).str.contains(symbol, case=False)
+    matches = df[mask]
+    if not matches.empty:
+        found = matches.iloc[0][sym_col]
+        print(f"✅ Resolved {symbol} -> {found} (fuzzy match)")
+        return found
+        
+    print(f"⚠️ Could not resolve {symbol} in CSV. Using as is.")
+    return symbol
 
 @mcp.tool()
 async def get_market_trade_summary(symbols: List[str] = []) -> str:
@@ -37,20 +94,13 @@ async def get_market_trade_summary(symbols: List[str] = []) -> str:
                  If empty, returns the top 50 companies sorted by trading volume.
     """
     print("🚀 Fetching Market Trade Summary...")
-    scraper = CSEScraper(target_years=set(), output_dir=output_dir, headless=True)
     
     try:
-        csv_path = await scraper.scrape_trade_summary()
+        df = await _get_trade_summary_df()
         
-        if not csv_path or not csv_path.exists():
+        if df is None:
             return "❌ Failed to download trade summary CSV."
             
-        # Read CSV with pandas
-        df = pd.read_csv(csv_path)
-        
-        # Clean up column names
-        df.columns = df.columns.str.strip()
-        
         # Convert to string/JSON for the agent
         volume_cols = df.columns[df.columns.str.contains("volume", case=False)]
         if not volume_cols.empty:
@@ -61,6 +111,9 @@ async def get_market_trade_summary(symbols: List[str] = []) -> str:
         
         # Filter by symbols if provided
         if symbols:
+            # We do NOT resolve symbols here because we want to support partial matching (e.g. "JKH" finding "JKH.N0000")
+            # The regex logic below handles it.
+            
             symbol_cols = df.columns[df.columns.str.contains("symbol", case=False)]
             if not symbol_cols.empty:
                 sym_col = symbol_cols[0]
@@ -80,8 +133,6 @@ async def get_market_trade_summary(symbols: List[str] = []) -> str:
         
     except Exception as e:
         return f"❌ Error processing trade summary: {str(e)}"
-    finally:
-        await scraper.close()
 
 @mcp.tool()
 async def find_company_info(query: str) -> str:
@@ -97,17 +148,13 @@ async def find_company_info(query: str) -> str:
         query: The search string (company name or symbol). Case-insensitive.
     """
     print(f"🚀 Searching for company info: '{query}'...")
-    scraper = CSEScraper(target_years=set(), output_dir=output_dir, headless=True)
     
     try:
-        csv_path = await scraper.scrape_trade_summary()
+        df = await _get_trade_summary_df()
         
-        if not csv_path or not csv_path.exists():
+        if df is None:
             return "❌ Failed to download trade summary CSV to perform search."
             
-        df = pd.read_csv(csv_path)
-        df.columns = df.columns.str.strip()
-        
         # Identify relevant columns
         symbol_cols = df.columns[df.columns.str.contains("symbol", case=False)]
         name_cols = df.columns[df.columns.str.contains("company|name", case=False)]
@@ -140,8 +187,6 @@ async def find_company_info(query: str) -> str:
         
     except Exception as e:
         return f"❌ Error searching for company info: {str(e)}"
-    finally:
-        await scraper.close()
 
 @mcp.tool()
 async def scrape_and_analyze_cse_reports(symbols: List[str] = [], target_years: List[str] = ["2025", "2024"]) -> str:
@@ -154,7 +199,9 @@ async def scrape_and_analyze_cse_reports(symbols: List[str] = [], target_years: 
     3. Compare financial performance across different years (e.g., 2024 vs 2025).
     
     Args:
-        symbols: A list of company symbols (e.g. ['JKH', 'SAMP']) to analyze. 
+        symbols: A list of company symbols (e.g. ['JKH.N0000', 'SAMP.N0000']) to analyze. 
+                 The symbols should ideally be in the full CSE format (e.g. 'JKH.N0000'). 
+                 If a partial symbol (e.g. 'JKH') is provided, the tool will attempt to resolve it using the latest market data.
                  If empty, it will try to analyze reports for ALL companies found in the trade summary (use with caution).
         target_years: List of years to filter reports for (default: ["2025", "2024"]).
     """
@@ -162,6 +209,14 @@ async def scrape_and_analyze_cse_reports(symbols: List[str] = [], target_years: 
 
     # 1. Scrape Reports
     print("📥 Step 1: Scraping Reports...")
+    
+    # Resolve symbols to full format (e.g. JKH -> JKH.N0000)
+    if symbols:
+        resolved_symbols = []
+        for s in symbols:
+            resolved_symbols.append(await resolve_symbol(s))
+        symbols = resolved_symbols
+        
     scraper = CSEScraper(target_years=set(target_years), output_dir=output_dir, headless=True)
     try:
         await scraper.run(symbols=symbols)
@@ -203,10 +258,29 @@ async def get_financial_analysis_for_symbol(symbol: str, year: str = "2025") -> 
     for that symbol and year.
     
     Args:
-        symbol: The company symbol (e.g. "JKH", "SAMP").
+        symbol: The company symbol (e.g. "JKH.N0000"). If a partial symbol is provided (e.g. "JKH"), 
+                it will be resolved using the latest market data.
         year: The year to retrieve data for (default: "2025").
     """
+    # Resolve symbol
+    symbol = await resolve_symbol(symbol)
     print(f"🚀 Retrieving financial analysis for {symbol} ({year})...")
+    
+    # 1. Try Database First
+    try:
+        reports = db_manager.get_reports(symbol, year)
+        
+        if reports:
+            print(f"✅ Found {len(reports)} reports in database for {symbol} ({year}).")
+            output_content = []
+            for report in reports:
+                output_content.append(f"--- FILE: {report['file_name']} (From DB) ---\n{json.dumps(report['content'], indent=2)}")
+            return f"✅ Found {len(reports)} analysis reports for {symbol} ({year}) in database:\n\n" + "\n\n".join(output_content)
+            
+    except Exception as e:
+        print(f"⚠️ Database lookup failed: {e}. Falling back to file system.")
+
+    # 2. Fallback to File System
     analysis_dir = Path("analysis_results")
     
     def get_files():
@@ -230,6 +304,8 @@ async def get_financial_analysis_for_symbol(symbol: str, year: str = "2025") -> 
             return f"❌ Could not generate analysis: {result}"
             
         # Try to find the files again after scraping
+        # Note: The analyzer now saves to DB, so we could check DB again, 
+        # but for simplicity we check files as the analyzer also saves files.
         files = get_files()
         if not files:
             return f"⚠️ Scraped reports for {symbol}, but no analysis JSON files were generated for {year}. The PDF might not have been readable or found."
