@@ -1,11 +1,16 @@
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
 import sys
+import io
+from pypdf import PdfReader
 from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.documents import Document
+from rag_store import PineconeManager
 
 # Add parent directory to sys.path
 sys.path.append(str(Path(__file__).parent))
@@ -17,7 +22,21 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
 
-app = FastAPI()
+# Initialize Pinecone Manager for uploads
+rag_manager = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    global rag_manager
+    rag_manager = PineconeManager()
+    yield
+    # Shutdown
+    print("🛑 Server shutting down. Clearing knowledge base...")
+    if rag_manager:
+        rag_manager.clear_index()
+
+app = FastAPI(lifespan=lifespan)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -27,6 +46,48 @@ chat_history = []
 
 class ChatMessage(BaseModel):
     message: str
+
+class FileDeleteRequest(BaseModel):
+    filename: str
+
+@app.post("/delete_file")
+async def delete_file(request: FileDeleteRequest):
+    try:
+        rag_manager.delete_file(request.filename)
+        return JSONResponse(content={"message": f"Successfully deleted {request.filename} from knowledge base."})
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    try:
+        # Read file content into memory
+        content = await file.read()
+        
+        documents = []
+        if file.filename.lower().endswith(".pdf"):
+            # Process PDF from memory
+            pdf_file = io.BytesIO(content)
+            reader = PdfReader(pdf_file)
+            for i, page in enumerate(reader.pages):
+                text = page.extract_text()
+                if text:
+                    documents.append(Document(page_content=text, metadata={"source": file.filename, "page": i}))
+                    
+        elif file.filename.lower().endswith(".txt"):
+            # Process Text from memory
+            text = content.decode("utf-8")
+            documents = [Document(page_content=text, metadata={"source": file.filename})]
+        else:
+            return JSONResponse(content={"error": "Unsupported file type. Please upload PDF or TXT."}, status_code=400)
+            
+        # Add to Pinecone
+        rag_manager.add_documents(documents)
+        
+        return JSONResponse(content={"message": f"Successfully processed {file.filename} and added to knowledge base."})
+        
+    except Exception as e:
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():

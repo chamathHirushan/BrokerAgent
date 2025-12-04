@@ -12,9 +12,33 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.tools import tool
 from dotenv import load_dotenv
+from rag_store import PineconeManager
 
 load_dotenv()
+
+# Initialize Pinecone Manager
+rag_manager = PineconeManager()
+
+@tool
+def search_knowledge_base(query: str) -> str:
+    """
+    Searches the internal knowledge base (Pinecone) for relevant information from uploaded documents.
+    Use this tool when the user asks about content from files they have uploaded.
+    """
+    try:
+        docs = rag_manager.similarity_search(query)
+        if not docs:
+            return "No relevant information found in the knowledge base."
+        
+        result = "Found the following information from uploaded documents:\n\n"
+        for i, doc in enumerate(docs, 1):
+            source = doc.metadata.get("source", "Unknown")
+            result += f"--- Source: {source} ---\n{doc.page_content}\n\n"
+        return result
+    except Exception as e:
+        return f"Error searching knowledge base: {str(e)}"
 
 # LLM
 model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", api_key=os.getenv("GEMINI_API_KEY"))
@@ -52,11 +76,14 @@ prompt = ChatPromptTemplate.from_messages([
 
 async def get_agent_executor():
     # Initialize connection to MCP servers and get tools
-    tools = await client.get_tools()
+    mcp_tools = await client.get_tools()
+    
+    # Combine MCP tools with local RAG tool
+    all_tools = mcp_tools + [search_knowledge_base]
     
     # Create the agent
-    agent = create_tool_calling_agent(model, tools, prompt)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
+    agent = create_tool_calling_agent(model, all_tools, prompt)
+    agent_executor = AgentExecutor(agent=agent, tools=all_tools, verbose=True)
     return agent_executor
 
 async def run_multi_server_agent():
