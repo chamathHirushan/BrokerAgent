@@ -23,12 +23,12 @@ class DatabaseManager:
         cursor = conn.cursor()
         
         # Table for storing analyzed financial reports
+        # use 'report_date' to store the full date (YYYY-MM-DD)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS financial_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol TEXT NOT NULL,
-                year TEXT NOT NULL,
-                quarter TEXT,
+                report_date TEXT NOT NULL,
                 file_name TEXT UNIQUE NOT NULL,
                 content JSON NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -38,19 +38,21 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
-    def save_report(self, symbol: str, year: str, file_name: str, content: Dict[str, Any], quarter: Optional[str] = None):
+    def save_report(self, symbol: str, report_date: str, file_name: str, content: Dict[str, Any]):
         """Save or update a financial report analysis."""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         try:
             cursor.execute('''
-                INSERT INTO financial_reports (symbol, year, quarter, file_name, content)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO financial_reports (symbol, report_date, file_name, content)
+                VALUES (?, ?, ?, ?)
                 ON CONFLICT(file_name) DO UPDATE SET
                     content = excluded.content,
+                    symbol = excluded.symbol,
+                    report_date = excluded.report_date,
                     created_at = CURRENT_TIMESTAMP
-            ''', (symbol.upper(), year, quarter, file_name, json.dumps(content)))
+            ''', (symbol.upper(), report_date, file_name, json.dumps(content)))
             conn.commit()
             print(f"💾 Saved analysis for {file_name} to database.")
         except Exception as e:
@@ -64,11 +66,12 @@ class DatabaseManager:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
+        # We search for reports where report_date starts with the year (e.g. '2025-03-31' starts with '2025')
         cursor.execute('''
             SELECT * FROM financial_reports 
-            WHERE symbol = ? AND year = ?
+            WHERE symbol = ? AND report_date LIKE ?
             ORDER BY created_at DESC
-        ''', (symbol.upper(), year))
+        ''', (symbol.upper(), f"{year}%"))
         
         rows = cursor.fetchall()
         conn.close()

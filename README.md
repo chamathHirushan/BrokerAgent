@@ -25,7 +25,6 @@
    ```env
    GEMINI_API_KEY=...
    PINECONE_API_KEY=...
-   PINECONE_INDEX_NAME=agentbroker
    ```
 
 3. **Run:**

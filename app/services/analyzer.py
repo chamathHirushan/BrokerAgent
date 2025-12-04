@@ -206,39 +206,28 @@ async def analyze_pdf(pdf_path: Path, output_dir: Path):
             print(f"⚠️ Could not generate dynamic filename: {e}")
             filename = f"{pdf_path.stem}_analysis.json"
 
-        # # Save to JSON
-        # output_file = output_dir / filename
-        # with open(output_file, "w", encoding="utf-8") as f:
-        #     json.dump(analysis_data, f, indent=2)
+        # Save to JSON
+        output_file = output_dir / filename
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(analysis_data, f, indent=2)
             
-        # print(f"✅ Analysis saved to {output_file}")
+        print(f"✅ Analysis saved to {output_file}")
 
         try:
-            symbol = "UNKNOWN"
-            year = "UNKNOWN"
+            # Use the same symbol and date we used for the filename
+            # This ensures consistency and avoids "UNKNOWN" values
+            db_symbol = symbol
+            db_date = date_formatted
             
-            # Try to get from content first
-            if "company_info" in analysis_data:
-                if "ticker_symbol" in analysis_data["company_info"]:
-                    symbol = analysis_data["company_info"]["ticker_symbol"]
-                if "report_end_date" in analysis_data["company_info"]:
-                    year = analysis_data["company_info"]["report_end_date"][:4] # Extract YYYY
-            
-            # Fallback to filename parsing if content is missing/empty
-            if symbol == "UNKNOWN" or not symbol:
-                parts = filename.split('_')
-                if len(parts) > 0:
-                    symbol = parts[0].split('.')[0] # Remove .N0000
-            
-            if year == "UNKNOWN":
-                # Try to find a year in the filename
-                match = re.search(r'20\d{2}', filename)
-                if match:
-                    year = match.group(0)
+            if db_symbol == "UNKNOWN" or not db_symbol:
+                 # Fallback: try to get from filename if the variable is somehow empty
+                 parts = filename.split('_')
+                 if len(parts) > 0:
+                    db_symbol = parts[0].split('.')[0]
 
             db_manager.save_report(
-                symbol=symbol,
-                year=year,
+                symbol=db_symbol,
+                report_date=db_date,
                 file_name=filename,
                 content=analysis_data
             )
