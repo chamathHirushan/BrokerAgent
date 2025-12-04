@@ -18,7 +18,13 @@ from rag_store import PineconeManager
 
 load_dotenv()
 
-rag_manager = PineconeManager()
+_rag_manager_instance = None
+
+def get_rag_manager():
+    global _rag_manager_instance
+    if _rag_manager_instance is None:
+        _rag_manager_instance = PineconeManager()
+    return _rag_manager_instance
 
 @tool
 def search_knowledge_base(query: str) -> str:
@@ -27,7 +33,8 @@ def search_knowledge_base(query: str) -> str:
     Use this tool when the user asks about content from files they have uploaded.
     """
     try:
-        docs = rag_manager.similarity_search(query)
+        manager = get_rag_manager()
+        docs = manager.similarity_search(query)
         if not docs:
             return "No relevant information found in the knowledge base."
         

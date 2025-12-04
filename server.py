@@ -14,7 +14,7 @@ from rag_store import PineconeManager
 
 sys.path.append(str(Path(__file__).parent))
 
-from multi_server import get_agent_executor
+from multi_server import get_agent_executor, get_rag_manager
 
 # Force UTF-8 encoding for stdout/stderr on Windows
 if sys.platform == "win32":
@@ -26,7 +26,8 @@ rag_manager = None
 async def lifespan(app: FastAPI):
     # Startup
     global rag_manager
-    rag_manager = PineconeManager()
+    # Initialize the shared instance via multi_server's getter
+    rag_manager = get_rag_manager()
     yield
     # Shutdown
     print("🛑 Server shutting down. Clearing knowledge base...")

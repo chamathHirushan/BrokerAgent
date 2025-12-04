@@ -26,8 +26,12 @@ function appendMessage(text, sender) {
     const div = document.createElement('div');
     div.classList.add('message', sender);
     
-    // Handle newlines for better formatting
-    div.innerHTML = text.replace(/\n/g, '<br>');
+    // Handle bold text (**text**) and newlines
+    let formattedText = text
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
+        .replace(/\n/g, '<br>'); // Newlines
+    
+    div.innerHTML = formattedText;
     
     // Insert before typing indicator
     chatBox.insertBefore(div, typingIndicator);
