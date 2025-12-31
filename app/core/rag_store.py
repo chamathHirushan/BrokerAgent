@@ -41,10 +41,10 @@ class PineconeManager:
             # Verify dimension compatibility
             index_info = self.pc.describe_index(self.index_name)
             if int(index_info.dimension) != 384:
-                print(f"CRITICAL WARNING: Index '{self.index_name}' has {index_info.dimension} dimensions. Model uses 768. Uploads WILL fail.")
+                print(f"CRITICAL WARNING: Index '{self.index_name}' has {index_info.dimension} dimensions. Model uses 384. Uploads WILL fail.")
 
         self.vector_store = PineconeVectorStore(
-            index_name=self.index_name,
+            index=self.pc.Index(self.index_name),
             embedding=self.embeddings
         )
 
