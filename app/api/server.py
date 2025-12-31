@@ -10,7 +10,6 @@ from pypdf import PdfReader
 from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
-from app.core.rag_store import PineconeManager
 
 from app.api.multi_server import get_agent_executor, get_rag_manager
 
@@ -28,7 +27,7 @@ async def lifespan(app: FastAPI):
     rag_manager = get_rag_manager()
     yield
     # Shutdown
-    print("🛑 Server shutting down. Clearing knowledge base...")
+    print("Server shutting down. Clearing knowledge base...")
     if rag_manager:
         rag_manager.clear_index()
 

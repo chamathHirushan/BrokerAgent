@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Set, Optional
 import pandas as pd
 
-# Force UTF-8 encoding for stdout/stderr on Windows to handle emojis
+# Force UTF-8 encoding for stdout/stderr on Windows
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
@@ -33,7 +33,7 @@ async def _get_trade_summary_df() -> Optional[pd.DataFrame]:
         df.columns = df.columns.str.strip()
         return df
     except Exception as e:
-        print(f"⚠️ Error getting trade summary: {e}")
+        print(f"Error getting trade summary: {e}")
         return None
     finally:
         await scraper.close()
@@ -44,11 +44,11 @@ async def resolve_symbol(symbol: str) -> str:
     Resolves a symbol to its full format (e.g., 'JKH' -> 'JKH.N0000') using the trade summary.
     """
     symbol = symbol.strip().upper()
-    print(f"🔎 Resolving symbol: {symbol}...")
+    print(f"Resolving symbol: {symbol}...")
     
     df = await _get_trade_summary_df()
     if df is None:
-        print("⚠️ Could not load CSV for symbol resolution.")
+        print("Could not load CSV for symbol resolution.")
         return symbol
         
     symbol_cols = df.columns[df.columns.str.contains("symbol", case=False)]
@@ -65,7 +65,7 @@ async def resolve_symbol(symbol: str) -> str:
     matches = df[mask]
     if not matches.empty:
         found = matches.iloc[0][sym_col]
-        print(f"✅ Resolved {symbol} -> {found}")
+        print(f"Resolved {symbol} -> {found}")
         return found
         
     # 3. Check for general containment (fuzzy)
@@ -73,10 +73,10 @@ async def resolve_symbol(symbol: str) -> str:
     matches = df[mask]
     if not matches.empty:
         found = matches.iloc[0][sym_col]
-        print(f"✅ Resolved {symbol} -> {found} (fuzzy match)")
+        print(f"Resolved {symbol} -> {found} (fuzzy match)")
         return found
         
-    print(f"⚠️ Could not resolve {symbol} in CSV. Using as is.")
+    print(f"Could not resolve {symbol} in CSV. Using as is.")
     return symbol
 
 @mcp.tool()
@@ -99,7 +99,7 @@ async def get_market_trade_summary(symbols: List[str] = []) -> str:
         df = await _get_trade_summary_df()
         
         if df is None:
-            return "❌ Failed to download trade summary CSV."
+            return "Error: Failed to download trade summary CSV."
             
         # Convert to string/JSON for the agent
         volume_cols = df.columns[df.columns.str.contains("volume", case=False)]
@@ -122,17 +122,17 @@ async def get_market_trade_summary(symbols: List[str] = []) -> str:
                 df = df[df[sym_col].astype(str).str.contains(pattern, case=False, regex=True)]
             
             if df.empty:
-                return f"⚠️ No data found for symbols: {', '.join(symbols)}"
+                return f"Warning: No data found for symbols: {', '.join(symbols)}"
             
-            return f"✅ Market Trade Summary for requested symbols:\n\n{df.to_markdown(index=False)}"
+            return f"Market Trade Summary for requested symbols:\n\n{df.to_markdown(index=False)}"
         
         # Select top 50 rows to keep it reasonable
         top_df = df.head(50)
         
-        return f"✅ Market Trade Summary (Top 50 by Volume):\n\n{top_df.to_markdown(index=False)}"
+        return f"Market Trade Summary (Top 50 by Volume):\n\n{top_df.to_markdown(index=False)}"
         
     except Exception as e:
-        return f"❌ Error processing trade summary: {str(e)}"
+        return f"Error processing trade summary: {str(e)}"
 
 @mcp.tool()
 async def find_company_info(query: str) -> str:
@@ -153,14 +153,14 @@ async def find_company_info(query: str) -> str:
         df = await _get_trade_summary_df()
         
         if df is None:
-            return "❌ Failed to download trade summary CSV to perform search."
+            return "Error: Failed to download trade summary CSV to perform search."
             
         # Identify relevant columns
         symbol_cols = df.columns[df.columns.str.contains("symbol", case=False)]
         name_cols = df.columns[df.columns.str.contains("company|name", case=False)]
         
         if symbol_cols.empty:
-            return "❌ Could not find 'Symbol' column in the trade summary."
+            return "Error: Could not find 'Symbol' column in the trade summary."
             
         sym_col = symbol_cols[0]
         # If we can't find a dedicated name column, we search all columns or just the symbol column
@@ -180,13 +180,13 @@ async def find_company_info(query: str) -> str:
         results = df[mask]
         
         if results.empty:
-            return f"⚠️ No companies found matching '{query}'."
+            return f"Warning: No companies found matching '{query}'."
             
         top_results = results.head(3)
-        return f"✅ Found {len(results)} matches for '{query}':\n\n{top_results.to_markdown(index=False)}"
+        return f"Found {len(results)} matches for '{query}':\n\n{top_results.to_markdown(index=False)}"
         
     except Exception as e:
-        return f"❌ Error searching for company info: {str(e)}"
+        return f"Error searching for company info: {str(e)}"
 
 @mcp.tool()
 async def scrape_and_analyze_cse_reports(symbols: List[str] = [], target_years: List[str] = ["2025", "2024"]) -> str:
@@ -221,7 +221,7 @@ async def scrape_and_analyze_cse_reports(symbols: List[str] = [], target_years: 
     try:
         await scraper.run(symbols=symbols)
     except Exception as e:
-        return f"❌ Scraping failed: {str(e)}"
+        return f"Error: Scraping failed: {str(e)}"
 
     # 2. Analyze Reports
     print("🤖 Step 2: Analyzing Reports...")
@@ -233,7 +233,7 @@ async def scrape_and_analyze_cse_reports(symbols: List[str] = [], target_years: 
     pdf_files = list(downloads_dir.rglob("*.pdf"))
     
     if not pdf_files:
-        return "⚠️ No PDFs found to analyze after scraping."
+        return "Warning: No PDFs found to analyze after scraping."
 
     analyzed_count = 0
     for pdf in pdf_files:
@@ -241,9 +241,9 @@ async def scrape_and_analyze_cse_reports(symbols: List[str] = [], target_years: 
             await analyze_pdf(pdf, analysis_dir)
             analyzed_count += 1
         except Exception as e:
-            print(f"❌ Failed to analyze {pdf.name}: {e}")
+            print(f"Failed to analyze {pdf.name}: {e}")
 
-    return f"✅ Success! Scraped and processed reports. Analyzed {analyzed_count} out of {len(pdf_files)} documents. Results saved in 'analysis_results'."
+    return f"Success! Scraped and processed reports. Analyzed {analyzed_count} out of {len(pdf_files)} documents. Results saved in 'analysis_results'."
 
 @mcp.tool()
 async def get_financial_analysis_for_symbol(symbol: str, year: str = "2025") -> str:
@@ -271,14 +271,14 @@ async def get_financial_analysis_for_symbol(symbol: str, year: str = "2025") -> 
         reports = db_manager.get_reports(symbol, year)
         
         if reports:
-            print(f"✅ Found {len(reports)} reports in database for {symbol} ({year}).")
+            print(f"Found {len(reports)} reports in database for {symbol} ({year}).")
             output_content = []
             for report in reports:
                 output_content.append(f"--- FILE: {report['file_name']} (From DB) ---\n{json.dumps(report['content'], indent=2)}")
-            return f"✅ Found {len(reports)} analysis reports for {symbol} ({year}) in database:\n\n" + "\n\n".join(output_content)
+            return f"Found {len(reports)} analysis reports for {symbol} ({year}) in database:\n\n" + "\n\n".join(output_content)
             
     except Exception as e:
-        print(f"⚠️ Database lookup failed: {e}. Falling back to file system.")
+        print(f"Database lookup failed: {e}. Falling back to file system.")
 
     # 2. Fallback to File System
     analysis_dir = Path("analysis_results")
@@ -295,20 +295,20 @@ async def get_financial_analysis_for_symbol(symbol: str, year: str = "2025") -> 
     files = get_files()
     
     if not files:
-        print(f"⚠️ No local analysis found for {symbol}. Triggering scrape and analyze...")
+        print(f"No local analysis found for {symbol}. Triggering scrape and analyze...")
         # Call the existing tool to generate the data
         # We pass the symbol and the requested year
         result = await scrape_and_analyze_cse_reports(symbols=[symbol], target_years=[year])
         
-        if "❌" in result:
-            return f"❌ Could not generate analysis: {result}"
+        if "Error" in result or "Failed" in result:
+            return f"Error: Could not generate analysis: {result}"
             
         # Try to find the files again after scraping
         # Note: The analyzer now saves to DB, so we could check DB again, 
         # but for simplicity we check files as the analyzer also saves files.
         files = get_files()
         if not files:
-            return f"⚠️ Scraped reports for {symbol}, but no analysis JSON files were generated for {year}. The PDF might not have been readable or found."
+            return f"Warning: Scraped reports for {symbol}, but no analysis JSON files were generated for {year}. The PDF might not have been readable or found."
 
     # Read and combine the content of the found JSON files
     output_content = []
@@ -318,9 +318,9 @@ async def get_financial_analysis_for_symbol(symbol: str, year: str = "2025") -> 
                 data = f.read()
                 output_content.append(f"--- FILE: {file_path.name} ---\n{data}")
         except Exception as e:
-            output_content.append(f"❌ Error reading {file_path.name}: {str(e)}")
+            output_content.append(f"Error reading {file_path.name}: {str(e)}")
             
-    return f"✅ Found {len(files)} analysis reports for {symbol} ({year}):\n\n" + "\n\n".join(output_content)
+    return f"Found {len(files)} analysis reports for {symbol} ({year}):\n\n" + "\n\n".join(output_content)
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")

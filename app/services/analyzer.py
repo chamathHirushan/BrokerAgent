@@ -16,7 +16,7 @@ load_dotenv()
 # Configure Gemini API
 GENAI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GENAI_API_KEY:
-    print("⚠️ GEMINI_API_KEY not found in environment variables. Please set it in a .env file.")
+    print("GEMINI_API_KEY not found in environment variables. Please set it in a .env file.")
 
 if GENAI_API_KEY:
     genai.configure(api_key=GENAI_API_KEY)
@@ -149,10 +149,10 @@ class FinancialReportAnalysis(BaseModel):
 # --- Analysis Logic ---
 
 async def analyze_pdf(pdf_path: Path, output_dir: Path):
-    print(f"🤖 Analyzing {pdf_path.name}...")
+    print(f"Analyzing {pdf_path.name}...")
     
     if not GENAI_API_KEY:
-        print("❌ Skipping analysis: GEMINI_API_KEY not set.")
+        print("Skipping analysis: GEMINI_API_KEY not set.")
         return
 
     # Upload file to Gemini
@@ -160,7 +160,7 @@ async def analyze_pdf(pdf_path: Path, output_dir: Path):
         sample_file = genai.upload_file(path=pdf_path, display_name=pdf_path.name)
         print(f"   File uploaded: {sample_file.display_name}")
     except Exception as e:
-        print(f"❌ Error uploading file: {e}")
+        print(f"Error uploading file: {e}")
         return
 
     # Create the prompt
@@ -203,7 +203,7 @@ async def analyze_pdf(pdf_path: Path, output_dir: Path):
             filename = f"{filename_base}_analysis.json"
             
         except Exception as e:
-            print(f"⚠️ Could not generate dynamic filename: {e}")
+            print(f"Could not generate dynamic filename: {e}")
             filename = f"{pdf_path.stem}_analysis.json"
 
         # Save to JSON
@@ -211,7 +211,7 @@ async def analyze_pdf(pdf_path: Path, output_dir: Path):
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(analysis_data, f, indent=2)
             
-        print(f"✅ Analysis saved to {output_file}")
+        print(f"Analysis saved to {output_file}")
 
         try:
             # Use the same symbol and date we used for the filename
@@ -233,10 +233,10 @@ async def analyze_pdf(pdf_path: Path, output_dir: Path):
             )
             
         except Exception as e:
-            print(f"⚠️ Failed to save to database: {e}")
+            print(f"Failed to save to database: {e}")
 
     except Exception as e:
-        print(f"❌ Error during analysis: {e}")
+        print(f"Error during analysis: {e}")
     
     finally:
         # Cleanup

@@ -42,11 +42,11 @@ class CSEScraper:
                     if resp.status == 200:
                         async with aiofiles.open(filename, "wb") as f:
                             await f.write(await resp.read())
-                        print(f"✅ Downloaded {filename.name}")
+                        print(f"Downloaded {filename.name}")
                     else:
-                        print(f"❌ Failed to download {url} (status {resp.status})")
+                        print(f"Failed to download {url} (status {resp.status})")
         except Exception as e:
-            print(f"❌ Error downloading {url}: {e}")
+            print(f"Error downloading {url}: {e}")
 
     async def _get_company_reports(self, symbol: str):
         """Navigate to company page and download reports."""
@@ -55,7 +55,7 @@ class CSEScraper:
         self.page.set_default_timeout(60000)
         
         url = f"https://www.cse.lk/pages/company-profile/company-profile.component.html?symbol={symbol}"
-        print(f"🔍 Processing {symbol}...")
+        print(f"Processing {symbol}...")
         
         try:
             await self.page.goto(url, timeout=90_000, wait_until="domcontentloaded")
@@ -68,12 +68,12 @@ class CSEScraper:
             try:
                 await self.page.wait_for_load_state("networkidle", timeout=15000)
             except Exception:
-                print("⚠️ Network didn't idle, proceeding anyway...")
+                print("Network didn't idle, proceeding anyway...")
 
             # Find links with PDF icon
             pdf_links = self.page.locator("a:has(i.fa.fa-file-pdf-o)")
             count = await pdf_links.count()
-            print(f"📄 Found {count} PDF link(s) for {symbol}")
+            print(f"Found {count} PDF link(s) for {symbol}")
 
             company_dir = self.output_dir / "quartly_reports" / symbol.replace(".", "_")
             company_dir.mkdir(parents=True, exist_ok=True)
@@ -101,16 +101,16 @@ class CSEScraper:
                 out_file = company_dir / f"{symbol}_{downloads_count:02d}_{base_name}"
                 await self._download_pdf(abs_url, out_file)
 
-            print(f"✅ Done {symbol}: downloaded {downloads_count} file(s).")
+            print(f"Done {symbol}: downloaded {downloads_count} file(s).")
 
         except Exception as e:
-            print(f"⚠️ Error processing {symbol}: {e}")
+            print(f"Error processing {symbol}: {e}")
 
     async def scrape_trade_summary(self) -> Optional[Path]:
         """Scrape and download the trade summary CSV."""
         await self._ensure_page()
         url = "https://www.cse.lk/pages/trade-summary/trade-summary.component.html"
-        print("🔍 Processing Trade Summary...")
+        print("Processing Trade Summary...")
         
         trade_summary_dir = self.output_dir / "tradesummary"
         trade_summary_dir.mkdir(parents=True, exist_ok=True)
@@ -136,11 +136,11 @@ class CSEScraper:
             
             save_path = trade_summary_dir / new_filename
             await download.save_as(save_path)
-            print(f"✅ Downloaded Trade Summary: {save_path}")
+            print(f"Downloaded Trade Summary: {save_path}")
             return save_path
 
         except Exception as e:
-            print(f"⚠️ Error processing Trade Summary: {e}")
+            print(f"Error processing Trade Summary: {e}")
             return None
 
     async def run(self, symbols: List[str] = []):
@@ -168,18 +168,18 @@ class CSEScraper:
                         if volume_col:
                             df[volume_col] = pd.to_numeric(df[volume_col].astype(str).str.replace(',', ''), errors='coerce')
                             df = df.sort_values(by=volume_col, ascending=False)
-                            print(f"📊 Sorted symbols by {volume_col} (highest to lowest).")
+                            print(f"Sorted symbols by {volume_col} (highest to lowest).")
 
                         csv_symbols = df[symbol_col].dropna().astype(str).unique().tolist()
-                        print(f"📊 Found {len(csv_symbols)} symbols (Normal shares only) in Trade Summary.")
+                        print(f"Found {len(csv_symbols)} symbols (Normal shares only) in Trade Summary.")
                         symbols_to_process = csv_symbols
                     else:
-                        print(f"⚠️ Could not find 'Symbol' column in CSV. Available columns: {df.columns.tolist()}")
+                        print(f"Could not find 'Symbol' column in CSV. Available columns: {df.columns.tolist()}")
                         
                 except Exception as e:
-                    print(f"⚠️ Error reading Trade Summary CSV: {e}")
+                    print(f"Error reading Trade Summary CSV: {e}")
 
-            print(f"🚀 Starting processing for {len(symbols_to_process)} symbols...")
+            print(f"Starting processing for {len(symbols_to_process)} symbols...")
             for symbol in symbols_to_process:
                 await self._get_company_reports(symbol)
         finally:

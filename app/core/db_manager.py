@@ -54,9 +54,9 @@ class DatabaseManager:
                     created_at = CURRENT_TIMESTAMP
             ''', (symbol.upper(), report_date, file_name, json.dumps(content)))
             conn.commit()
-            print(f"💾 Saved analysis for {file_name} to database.")
+            print(f"Saved analysis for {file_name} to database.")
         except Exception as e:
-            print(f"❌ Error saving to DB: {e}")
+            print(f"Error saving to DB: {e}")
         finally:
             conn.close()
 
