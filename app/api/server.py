@@ -11,6 +11,8 @@ from pypdf import PdfReader
 from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.documents import Document
+from google.api_core.exceptions import ResourceExhausted
+import traceback
 
 from app.api.multi_server import get_agent_executor, get_rag_manager
 
@@ -129,10 +131,26 @@ async def chat(chat_message: ChatMessage):
             chat_history.append(HumanMessage(content=user_input))
             chat_history.append(AIMessage(content=full_response))
             
+        except ResourceExhausted as e:
+            error_msg = str(e)
+            user_msg = "Google Gemini Quota Exceeded. Please try again in a minute."
+            
+            # Try to extract retry time
+            if "retry in" in error_msg:
+                try:
+                    import re
+                    match = re.search(r"retry in (\d+(\.\d+)?)s", error_msg)
+                    if match:
+                        seconds = float(match.group(1))
+                        user_msg = f"Quota exceeded. Please retry in {int(seconds)} seconds."
+                except:
+                    pass
+            
+            yield json.dumps({"type": "error", "content": user_msg}) + "\n"
+
         except Exception as e:
-            import traceback
             traceback.print_exc()
-            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+            yield json.dumps({"type": "error", "content": f"An error occurred: {str(e)}"}) + "\n"
 
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 
