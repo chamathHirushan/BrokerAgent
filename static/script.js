@@ -136,6 +136,9 @@ async function deleteFile(filename, element) {
     }
 }
 
+let currentAgentMessageDiv = null;
+let currentStepDiv = null;
+
 async function sendMessage() {
     const text = messageInput.value.trim();
     if (!text) return;
@@ -148,8 +151,10 @@ async function sendMessage() {
     appendMessage(text, 'user');
     messageInput.value = '';
     
-    // Show typing indicator
+    // Show typing (will be hidden on first stream event)
     showTyping();
+    currentAgentMessageDiv = null;
+    currentStepDiv = null;
 
     try {
         const response = await fetch('/chat', {
@@ -158,24 +163,114 @@ async function sendMessage() {
             body: JSON.stringify({ message: text })
         });
         
-        const data = await response.json();
-        
-        // Hide typing indicator
         hideTyping();
 
-        if (response.ok) {
-            appendMessage(data.response, 'agent');
-        } else {
-            appendMessage('Error: ' + (data.detail || 'Unknown error'), 'agent');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            
+            // Keep the last partial line in buffer
+            buffer = lines.pop(); 
+
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const event = JSON.parse(line);
+                    handleStreamEvent(event);
+                } catch (e) {
+                    console.error("Error parsing JSON stream line", e);
+                }
+            }
+        }
+
+        // Process any remaining buffer
+        if (buffer.trim()) {
+            try {
+                const event = JSON.parse(buffer);
+                handleStreamEvent(event);
+            } catch (e) { console.error(e); }
+        }
+
     } catch (error) {
         hideTyping();
         appendMessage('Error: ' + error.message, 'agent');
     } finally {
+        completeCurrentStep();
         messageInput.disabled = false;
         sendBtn.disabled = false;
         messageInput.focus();
+        currentAgentMessageDiv = null;
     }
+}
+
+function handleStreamEvent(event) {
+    if (event.type === 'step') {
+        completeCurrentStep();
+        currentAgentMessageDiv = null; // Start new message bubble after step
+        currentStepDiv = appendStep(event.content);
+    } else if (event.type === 'token') {
+        completeCurrentStep();
+        appendToken(event.content);
+    } else if (event.type === 'error') {
+        completeCurrentStep();
+        appendMessage('Error: ' + event.content, 'agent');
+    }
+}
+
+function completeCurrentStep() {
+    if (!currentStepDiv) return;
+    
+    const dot = currentStepDiv.querySelector('.w-2');
+    if (dot) {
+        dot.classList.remove('animate-pulse', 'bg-blue-400');
+        dot.classList.add('bg-green-500');
+    }
+    
+    const span = currentStepDiv.querySelector('span');
+    if (span) {
+        span.textContent = span.textContent.replace('Executing:', 'Executed:');
+    }
+    
+    currentStepDiv = null;
+}
+
+function appendStep(text) {
+    const div = document.createElement('div');
+    div.classList.add('message', 'step'); 
+    div.innerHTML = `<div class="flex items-center gap-2"><div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div><span>${text}</span></div>`;
+    chatBox.insertBefore(div, typingIndicator);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return div;
+}
+
+function appendToken(text) {
+    if (!currentAgentMessageDiv) {
+        currentAgentMessageDiv = document.createElement('div');
+        currentAgentMessageDiv.classList.add('message', 'agent');
+        currentAgentMessageDiv.dataset.rawText = ""; 
+        chatBox.insertBefore(currentAgentMessageDiv, typingIndicator);
+    }
+    
+    currentAgentMessageDiv.dataset.rawText += text;
+    
+    // Basic formatting
+    let formattedText = currentAgentMessageDiv.dataset.rawText
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+        
+    currentAgentMessageDiv.innerHTML = formattedText;
+    chatBox.scrollTop = chatBox.scrollHeight;
 }
 
 // Event Listeners

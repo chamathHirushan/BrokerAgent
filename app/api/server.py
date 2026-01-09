@@ -1,11 +1,12 @@
 import uvicorn
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import sys
 import io
+import json
 from pypdf import PdfReader
 from pathlib import Path
 from langchain_core.messages import HumanMessage, AIMessage
@@ -93,28 +94,47 @@ async def read_root():
 async def chat(chat_message: ChatMessage):
     user_input = chat_message.message
     
-    try:
-        # Get the agent executor
-        agent_executor = await get_agent_executor()
-        
-        # Invoke the agent
-        result = await agent_executor.ainvoke({
-            "input": user_input,
-            "chat_history": chat_history
-        })
-        
-        response_text = result["output"]
-        
-        # Update history
-        chat_history.append(HumanMessage(content=user_input))
-        chat_history.append(AIMessage(content=response_text))
-        
-        return JSONResponse(content={"response": response_text})
-        
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return JSONResponse(content={"response": f"Error: {str(e)}"}, status_code=500)
+    async def generate():
+        try:
+            agent_executor = await get_agent_executor()
+            full_response = ""
+            
+            # Construct the input dictionary
+            agent_input = {
+                "input": user_input,
+                "chat_history": chat_history
+            }
+
+            async for event in agent_executor.astream_events(
+                agent_input,
+                version="v2"
+            ):
+                kind = event["event"]
+                
+                # Yield tool usage
+                if kind == "on_tool_start":
+                    tool_name = event["name"]
+                    if tool_name != "_Exception": 
+                         yield json.dumps({"type": "step", "content": f"Executing: {tool_name}"}) + "\n"
+                
+                # Yield streaming content (final answer)
+                elif kind == "on_chat_model_stream":
+                    chunk = event["data"]["chunk"]
+                    if hasattr(chunk, "content") and chunk.content:
+                        content = chunk.content
+                        full_response += content
+                        yield json.dumps({"type": "token", "content": content}) + "\n"
+
+            # Update history after completion
+            chat_history.append(HumanMessage(content=user_input))
+            chat_history.append(AIMessage(content=full_response))
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            yield json.dumps({"type": "error", "content": str(e)}) + "\n"
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
 
 @app.post("/reset")
 async def reset():
