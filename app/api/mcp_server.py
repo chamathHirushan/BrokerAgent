@@ -3,8 +3,9 @@ import os
 import sys
 import re
 from pathlib import Path
-from typing import List, Set, Optional
+from typing import List, Set, Optional, Dict, Any
 import pandas as pd
+from cse_lk import CSEClient, CSEAPIError, CSERateLimitError
 
 # Force UTF-8 encoding for stdout/stderr on Windows
 if sys.platform == "win32":
@@ -22,6 +23,107 @@ from app.services.analyzer import analyze_pdf
 mcp = FastMCP("BrokerAgent")
 output_dir: str = "downloads"
 
+# Initialize global CSE Client
+cse_client = CSEClient()
+
+@mcp.tool()
+async def get_market_overview() -> str:
+    """
+    Get a comprehensive snapshot of the market relative to 'Today'.
+    Includes market status (Open/Closed), summaries, indices (ASPI, S&P SL20), and top movers.
+    """
+    try:
+        overview = cse_client.get_market_overview()
+        
+        # Format for LLM
+        output = "Market Overview:\n"
+        output += f"Status: {overview.get('status', {}).get('marketStatus', 'Unknown')}\n"
+        
+        aspi = overview.get('aspi', {})
+        output += f"ASPI: {aspi.get('value')} ({aspi.get('change')} / {aspi.get('changePercentage')}%)\n"
+        
+        snp = overview.get('snp_sl20', {})
+        output += f"S&P SL20: {snp.get('value')} ({snp.get('change')} / {snp.get('changePercentage')}%)\n"
+        
+        output += f"\nTop Gainers (Top 5):\n"
+        for g in overview.get('top_gainers', []):
+            output += f"- {g.symbol}: {g.price} (+{g.changePercentage}%)\n"
+            
+        return output
+    except Exception as e:
+        return f"Error fetching market overview: {str(e)}"
+
+@mcp.tool()
+async def get_company_profile(symbol: str) -> str:
+    """
+    Get detailed current information for a specific company using the official API.
+    Args:
+        symbol: Stock symbol (e.g., 'JKH.N0000').
+    """
+    try:
+        # Resolve symbol if needed
+        full_symbol = await resolve_symbol(symbol)
+        
+        info = cse_client.get_company_info(full_symbol)
+        
+        return (
+            f"Company Profile for {full_symbol}:\n"
+            f"Name: {info.name}\n"
+            f"Last Traded Price: {info.last_traded_price}\n"
+            f"Change: {info.change} ({info.change_percentage}%)\n"
+            f"Market Cap: {info.market_cap}\n"
+        )
+    except Exception as e:
+        return f"Error fetching profile for {symbol}: {str(e)}"
+
+@mcp.tool()
+async def get_intraday_data(symbol: str) -> str:
+    """
+    Get today's intraday price movement for a stock.
+    Args:
+        symbol: Stock symbol (e.g., 'JKH.N0000').
+    """
+    try:
+        # Resolve symbol if needed
+        full_symbol = await resolve_symbol(symbol)
+        
+        # Using the workaround identified for chart data
+        data = {"symbol": full_symbol, "chartId": "1", "period": "1"}
+        chart_data = cse_client._make_request("chartData", data)
+        
+        if isinstance(chart_data, list):
+            # If data is too long, sample it
+            if len(chart_data) > 20:
+                summary_data = chart_data[::len(chart_data)//20] # Take every ~nth element to get ~20 points
+            else:
+                summary_data = chart_data
+                
+            return f"Intraday Chart Data for {full_symbol} (Sampled):\n{json.dumps(summary_data, indent=2)}"
+        
+        return f"Raw Data: {json.dumps(chart_data)[:500]}..."
+        
+    except Exception as e:
+        return f"Error fetching chart data for {symbol}: {str(e)}"
+
+@mcp.tool()
+async def get_latest_announcements() -> str:
+    """
+    Get the latest financial announcements from the CSE.
+    """
+    try:
+        announcements = cse_client.get_financial_announcements()
+        
+        if not announcements:
+            return "No recent financial announcements found."
+            
+        output = "Latest Financial Announcements (Top 10):\n"
+        for idx, ann in enumerate(announcements[:10], 1):
+            output += f"{idx}. {ann.company_name} ({ann.symbol}): {ann.announcement_title} [{ann.date}]\n"
+            
+        return output
+    except Exception as e:
+        return f"Error fetching announcements: {str(e)}"
+    
 async def _get_trade_summary_df() -> Optional[pd.DataFrame]:
     """Helper to scrape and load the trade summary CSV."""
     scraper = CSEScraper(target_years=set(), output_dir=output_dir, headless=True)
